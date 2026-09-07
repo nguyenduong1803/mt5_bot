@@ -119,6 +119,8 @@ def execute_order(alert: TradingViewAlert, strategy: StrategyConfig) -> OrderRes
                 return _close_positions(
                     alert, strategy, symbol, mt5_client.POSITION_TYPE_SELL, dry_run
                 )
+            elif alert.order_id == OrderId.CLOSE_ALL:
+                return _close_all_positions(alert, strategy, symbol, dry_run)
             else:
                 raise OrderExecutionError(f"Unsupported order_id: {alert.order_id}")
         except MT5Error as e:
@@ -131,7 +133,68 @@ def execute_order(alert: TradingViewAlert, strategy: StrategyConfig) -> OrderRes
 def _side_name(position_type) -> str:
     return "LONG" if position_type == mt5_client.POSITION_TYPE_BUY else "SHORT"
 
+def _close_all_positions(
+    alert: TradingViewAlert, strategy: StrategyConfig, symbol: str, dry_run: bool
+) -> OrderResult:
+    """Closes ALL open positions for this symbol/magic regardless of direction."""
+    positions = mt5_client.get_open_positions(symbol, strategy.magic)
 
+    if not positions:
+        message = f"No open positions found for symbol={symbol} magic={strategy.magic}"
+        logger.warning(message)
+        return OrderResult(
+            success=False,
+            dry_run=dry_run,
+            strategy=alert.strategy,
+            symbol=symbol,
+            action=alert.order_id.value,
+            message=message,
+        )
+
+    total_volume = sum(p.volume for p in positions)
+    long_count = sum(1 for p in positions if p.type == mt5_client.POSITION_TYPE_BUY)
+    short_count = len(positions) - long_count
+
+    if dry_run:
+        logger.info(
+            "[DRY RUN] strategy=%s symbol=%s action=closeAll would close %d position(s) volume=%s",
+            alert.strategy,
+            symbol,
+            len(positions),
+            total_volume,
+        )
+        return OrderResult(
+            success=True,
+            dry_run=True,
+            strategy=alert.strategy,
+            symbol=symbol,
+            action=alert.order_id.value,
+            volume=total_volume,
+            message=f"Dry run: would close {len(positions)} position(s) (L:{long_count}/S:{short_count}), no order sent to MT5",
+        )
+
+    logger.info(
+        "Closing ALL positions: strategy=%s symbol=%s count=%d (L:%d/S:%d) volume=%s",
+        alert.strategy,
+        symbol,
+        len(positions),
+        long_count,
+        short_count,
+        total_volume,
+    )
+    all_success, last_result = _execute_closes(strategy, symbol, positions)
+
+    return OrderResult(
+        success=all_success,
+        dry_run=False,
+        strategy=alert.strategy,
+        symbol=symbol,
+        action=alert.order_id.value,
+        volume=total_volume,
+        price=last_result.price if last_result else None,
+        order_ticket=last_result.order if last_result else None,
+        message=last_result.comment if last_result else "No positions closed",
+    )
 def _execute_closes(strategy: StrategyConfig, symbol: str, positions: list):
     """Sends close orders for the given open positions (assumes dry_run
     has already been handled by the caller). Returns (all_success,

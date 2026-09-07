@@ -14,7 +14,7 @@ from app.telegram_notifier import notify_order_result
 
 app = FastAPI(
     title="MT5 TradingView Webhook Bot",
-    description="Receives TradingView webhook alerts and executes orders on MetaTrader 5 / Exness",
+    description="Receives TradingView webhook alerts and executes orders on MetaTrader 5 (Exness, FTMO)",
     version="1.0.0",
 )
 

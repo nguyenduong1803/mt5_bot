@@ -58,10 +58,16 @@ def ensure_connection(strategy: StrategyConfig, password: str) -> None:
     MetaTrader5's Python API talks to a single terminal instance per
     process, so we only re-initialize when the target account/terminal
     actually changes. Callers must hold MT5_LOCK.
+
+    Each broker (Exness, FTMO, etc.) has its own MT5 terminal installation
+    with its own server list. The terminal path is resolved from:
+    1. strategy.mt5.terminal_path (per-strategy config)
+    2. MT5_TERMINAL_PATH env var
+    3. Default installation path
     """
     global _current_terminal
 
-    terminal_path = get_mt5_terminal_path()
+    terminal_path = get_mt5_terminal_path(strategy.mt5)
     identity = TerminalIdentity(
         login=strategy.mt5.login, server=strategy.mt5.server, path=terminal_path
     )
@@ -84,9 +90,10 @@ def ensure_connection(strategy: StrategyConfig, password: str) -> None:
 
     _current_terminal = identity
     logger.info(
-        "Connected to MT5 terminal login=%s server=%s",
+        "Connected to MT5 terminal login=%s server=%s path=%s",
         strategy.mt5.login,
         strategy.mt5.server,
+        terminal_path,
     )
 
 

@@ -9,6 +9,7 @@ class OrderId(str, Enum):
     CLOSE_LONG = "closeLong"
     OPEN_SHORT = "openShort"
     CLOSE_SHORT = "closeShort"
+    CLOSE_ALL = "closeAll" 
 
 
 class TradingViewAlert(BaseModel):

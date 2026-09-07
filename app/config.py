@@ -18,13 +18,26 @@ def _config_path() -> Path:
     return Path(os.getenv("CONFIG_PATH", "config.json"))
 
 
-def get_mt5_terminal_path() -> str:
+def get_mt5_terminal_path(strategy: Optional["MT5Config"] = None) -> str:
+    """Returns the MT5 terminal path for a strategy.
+
+    Priority:
+    1. Per-strategy terminal_path in config
+    2. MT5_TERMINAL_PATH env var
+    3. Default installation path
+    """
+    if strategy is not None and strategy.terminal_path:
+        return strategy.terminal_path
     return os.getenv("MT5_TERMINAL_PATH", DEFAULT_MT5_TERMINAL_PATH)
 
 
 class MT5Config(BaseModel):
     login: int
     server: str
+    # Path to terminal64.exe for this broker. Each broker (Exness, FTMO, etc.)
+    # has its own MT5 installation with its own server list. If not set,
+    # falls back to MT5_TERMINAL_PATH env var or default installation path.
+    terminal_path: Optional[str] = None
 
 
 class TelegramConfig(BaseModel):
@@ -34,7 +47,6 @@ class TelegramConfig(BaseModel):
     # Bot token for this strategy. Optional here — if omitted, falls back
     # to TELEGRAM_BOT_TOKEN_<STRATEGY> or TELEGRAM_BOT_TOKEN in .env.
     botToken: Optional[str] = None
-
 
 class StrategyConfig(BaseModel):
     # Base capital allocated per full-size (order_ratio=1) trade, in USD.

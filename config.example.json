@@ -1,19 +1,45 @@
 {
   "dryRun": true,
   "strategies": {
-    "eth_strategy_01": {
+    "eth_strategy_exness": {
       "price": 1000,
       "deviation": 200,
       "magic": 100001,
-      "comment": "ETH Strategy 01",
+      "comment": "ETH Strategy Exness",
       "mt5": {
         "login": 12345678,
-        "server": "YOUR_EXNESS_SERVER"
+        "server": "Exness-MT5Real7",
+        "terminal_path": "C:\\Program Files\\MetaTrader 5\\terminal64.exe"
       },
       "telegram": {
         "enabled": true,
         "botToken": "123456789:AAExampleBotTokenXXXXXXXXXXXXXXXXXXX",
         "chatId": "-1001234567890"
+      }
+    },
+    "eth_strategy_xm": {
+      "price": 100000,
+      "deviation": 200,
+      "magic": 200001,
+      "comment": "ETH Strategy XM",
+      "mt5": {
+        "login": 87654321,
+        "server": "XMGlobal-Live01",
+        "terminal_path": "C:\\Program Files\\XM Global MT5\\terminal64.exe"
+      },
+      "telegram": {
+        "enabled": true,
+        "botToken": "123456789:AAExampleBotTokenXXXXXXXXXXXXXXXXXXX",
+        "chatId": "-1001234567890"
+      },
+      "ftmo": {
+        "account_size": 100000,
+        "phase": "challenge",
+        "daily_loss_limit_pct": 5.0,
+        "max_drawdown_pct": 10.0,
+        "max_lot_size": 10.0,
+        "allow_weekend_holding": false,
+        "state_file": "ftmo_state_eth_strategy_ftmo.json"
       }
     }
   }

@@ -48,6 +48,18 @@ def _install_fake_mt5():
     fake.positions_get = MagicMock(return_value=[])
     fake.order_send = MagicMock()
 
+    # Account info mock with all required attributes
+    _account_info_mock = MagicMock()
+    _account_info_mock.balance = 100000.0
+    _account_info_mock.equity = 100000.0
+    _account_info_mock.margin = 0.0
+    _account_info_mock.free_margin = 100000.0
+    _account_info_mock.profit = 0.0
+    _account_info_mock.leverage = 100
+    _account_info_mock.margin_level = 0.0
+    _account_info_mock.credit = 0.0
+    fake.account_info = MagicMock(return_value=_account_info_mock)
+
     sys.modules["MetaTrader5"] = fake
     return fake
 
