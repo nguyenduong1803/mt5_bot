@@ -1,0 +1,42 @@
+# Git
+.git
+.gitignore
+
+# Python artifacts
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+.pytest_cache/
+venv/
+.venv/
+*.egg-info/
+
+# Logs
+logs/
+
+# Secrets (không được vào build context)
+.env
+config.json
+
+# Windows scripts (không cần trong image)
+*.bat
+setup.bat
+run.bat
+
+# Docs
+*.md
+!DOCKER.md
+
+# Tests
+tests/
+
+# IDE
+.vscode/
+.idea/
+*.suo
+*.user
+
+# OS
+.DS_Store
+Thumbs.db

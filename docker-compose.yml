@@ -1,0 +1,32 @@
+services:
+  mt5bot:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: mt5_webhook_bot
+    image: mt5-webhook-bot
+    ports:
+      - "8000:8000"
+      # Port cho noVNC — dùng khi setup MT5 (chạy /start-vnc.sh)
+      # Có thể comment lại sau khi MT5 đã cài xong
+      - "6080:6080"
+    volumes:
+      # Config (read-only)
+      - ./config.json:/app/config.json:ro
+      # Logs ra ngoài host
+      - ./logs:/app/logs
+      # Volume cho MT5 terminal — được cài riêng qua /install-mt5.sh
+      # Mount vào /root/.wine để entrypoint tìm terminal64.exe tại đây
+      - mt5_data:/root/.wine
+    env_file:
+      - .env
+    environment:
+      - TZ=Asia/Ho_Chi_Minh
+      # WINEPREFIX cho Python packages = /opt/wineprefix (baked trong image)
+      # WINEPREFIX cho MT5 terminal    = /root/.wine     (volume, mount ở trên)
+    restart: unless-stopped
+    shm_size: 256mb
+
+volumes:
+  mt5_data:
+    driver: local

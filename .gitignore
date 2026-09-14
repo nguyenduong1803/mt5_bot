@@ -5,3 +5,14 @@ __pycache__/
 logs/
 .env
 config.json
+
+# Docker / Wine
+docker/mt5-installer/*.exe
+docker/mt5-installer/*.msi
+.wine/
+
+# Large files & temporary files
+*.tar
+*.zip
+*.exe
+*.log

@@ -10,7 +10,14 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import List, Optional
 
-import MetaTrader5 as mt5
+import platform as _platform
+
+if _platform.system() == "Windows":
+    import MetaTrader5 as mt5
+else:
+    # Linux/Docker: MetaTrader5 là Windows-only DLL, không thể import trực tiếp.
+    # mt5_linux_client forward tất cả calls qua HTTP đến Wine Python proxy (port 8765).
+    from app import mt5_linux_client as mt5  # type: ignore[assignment]
 
 from app.config import StrategyConfig, get_mt5_terminal_path
 from app.logging_config import logger
