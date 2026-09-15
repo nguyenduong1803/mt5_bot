@@ -87,15 +87,15 @@ Restructure configuration so that:
 
 **Strategy**
 
-- Defaults (optional unless noted): `price`, `deviation` (default 200 if unset at both levels), `comment`, optional `dryRun`.
-- Required: `accounts` — non-empty object of account configs.
-- Strategy-level `price` is required **as a default** unless every account sets its own `price` (implementation may require strategy `price` always present for simpler validation — prefer: strategy `price` required; accounts may override).
+- Required: `price` (default capital for accounts that do not override), `accounts` — non-empty object of account configs.
+- Optional defaults: `deviation` (default **200** if unset at both strategy and account), `comment`, `dryRun`.
+- Accounts may override `price`; strategy `price` is **always required** even if every account also sets `price` (simpler validation; YAGNI on “omit when all override”).
 
 **Account**
 
 - Key: string identifier used in alerts (`account` field).
 - Required: `magic`, `mt5` (`l`, `p`, `server`).
-- Optional: `enabled` (default `true`), `price`, `deviation`, `comment`, `dryRun`, `terminal_path` (or under `mt5`).
+- Optional: `enabled` (default `true`), `price`, `deviation`, `comment`, `dryRun`.
 - Effective value resolution order for mergeable fields: **account → strategy → app** (`dryRun` only at app); then env `DRY_RUN` overrides all if set (preserve current behavior).
 
 **`mt5`**
@@ -103,7 +103,7 @@ Restructure configuration so that:
 - `l` (int): MT5 login.
 - `p` (string): MT5 password.
 - `server` (string).
-- Optional `terminal_path`: else `MT5_TERMINAL_PATH` env, else default path (current priority).
+- Optional `terminal_path` **only here** (not on account root): else `MT5_TERMINAL_PATH` env, else default path (current priority).
 
 ### `.env` (after cleanup)
 
@@ -152,11 +152,25 @@ Existing `TradingViewAlert` fields unchanged, plus:
 - One account’s connect/order failure does **not** stop remaining accounts.
 - Dedupe remains at alert level (strategy + order_id + … as today); applies once per webhook, not per account.
 
+### Duplicate alerts
+
+If `is_duplicate(alert)` fires **before** account execution (same dedupe key as today: strategy + order_id + symbol + comment + timenow):
+
+- **HTTP 200** with the **same envelope** as execution responses.
+- `results` is a **single synthetic entry**:
+  - `account`: the requested `account` key if provided, otherwise `null` / omit (implementation: use `null`).
+  - `success`: `true` (ignored duplicate, not an error).
+  - `message`: same meaning as today (“Duplicate alert ignored…”).
+  - `strategy` / `symbol` / `action` / `dry_run` filled from alert + resolved dry-run default (no per-account merge required).
+
+Do **not** fan-out duplicates to accounts and do **not** send Telegram for duplicate ignores (log + HTTP only, same as today).
+
 ### Response
 
-After execution has started (targets resolved successfully):
+After targets resolve successfully and execution (or duplicate short-circuit) runs:
 
-- Always **HTTP 200**.
+- Always **HTTP 200** for executed/duplicate paths.
+- **Breaking status change:** per-order MT5 failures that previously returned **502** now return **200** with `results[].success=false` (decision D). Only pre-execution config errors stay **4xx**; unexpected process failures may still be **500**.
 - Body envelope:
 
 ```json
@@ -190,7 +204,7 @@ After execution has started (targets resolved successfully):
 
 TradingView typically ignores body and only sees HTTP success — ops rely on Telegram + logs for per-account failures. This is an explicit trade-off (decision D) to avoid TV retries causing duplicate fills under multi-account / partial success.
 
-**Breaking change:** single `OrderResult` response becomes envelope + `results[]`. TV webhooks that only check HTTP 2xx remain fine.
+**Breaking change:** response body becomes envelope + `results[]`; MT5 order failures that used to be HTTP **502** become HTTP **200** with `results[].success=false`. TV webhooks that only check HTTP 2xx remain fine for the body change, and will no longer see failure status on MT5 errors (by design D).
 
 Config/validation errors before execution keep **4xx** as listed above. Unexpected process-level failures may still return **500**.
 
@@ -223,6 +237,8 @@ Config/validation errors before execution keep **4xx** as listed above. Unexpect
 4. Credentials read from `mt5.p`; absence of `MT5_PASSWORD_*` does not break.
 5. Telegram HTTP error does not change status/body of order response.
 6. Unknown strategy / unknown account / disabled account → 400.
+7. No enabled accounts (fan-out) → 400 `no_enabled_accounts`.
+8. Duplicate alert → 200 envelope with one synthetic `results[]` row; no MT5 calls; no Telegram.
 
 ## Migration notes
 
@@ -235,4 +251,3 @@ Config/validation errors before execution keep **4xx** as listed above. Unexpect
 ## Open points deferred
 
 - Parallel execution across accounts/terminals (future phase).
-- Whether strategy-level `price` can be omitted when all accounts set `price` (prefer required strategy `price` for YAGNI/simple validation unless implementation shows pain).
