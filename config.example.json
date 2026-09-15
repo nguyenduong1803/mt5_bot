@@ -1,45 +1,29 @@
 {
   "dryRun": true,
   "strategies": {
-    "eth_strategy_exness": {
+    "eth_strategy": {
       "price": 1000,
       "deviation": 200,
-      "magic": 100001,
-      "comment": "ETH Strategy Exness",
-      "mt5": {
-        "login": 12345678,
-        "server": "Exness-MT5Real7",
-        "terminal_path": "C:\\Program Files\\MetaTrader 5\\terminal64.exe"
-      },
-      "telegram": {
-        "enabled": true,
-        "botToken": "123456789:AAExampleBotTokenXXXXXXXXXXXXXXXXXXX",
-        "chatId": "-1001234567890"
-      }
-    },
-    "eth_strategy_xm": {
-      "price": 100000,
-      "deviation": 200,
-      "magic": 200001,
-      "comment": "ETH Strategy XM",
-      "mt5": {
-        "login": 87654321,
-        "server": "XMGlobal-Live01",
-        "terminal_path": "C:\\Program Files\\XM Global MT5\\terminal64.exe"
-      },
-      "telegram": {
-        "enabled": true,
-        "botToken": "123456789:AAExampleBotTokenXXXXXXXXXXXXXXXXXXX",
-        "chatId": "-1001234567890"
-      },
-      "ftmo": {
-        "account_size": 100000,
-        "phase": "challenge",
-        "daily_loss_limit_pct": 5.0,
-        "max_drawdown_pct": 10.0,
-        "max_lot_size": 10.0,
-        "allow_weekend_holding": false,
-        "state_file": "ftmo_state_eth_strategy_ftmo.json"
+      "comment": "ETH default",
+      "accounts": {
+        "exness_main": {
+          "enabled": true,
+          "magic": 100001,
+          "price": 1500,
+          "mt5": {
+            "l": 11111111,
+            "p": "your-mt5-password-here",
+            "server": "Exness-MT5Trial17"
+          }
+        },
+        "xm_01": {
+          "magic": 100002,
+          "mt5": {
+            "l": 22222222,
+            "p": "your-mt5-password-here",
+            "server": "XMGlobal-Live01"
+          }
+        }
       }
     }
   }
