@@ -96,7 +96,7 @@ Restructure configuration so that:
 - Key: string identifier used in alerts (`account` field).
 - Required: `magic`, `mt5` (`l`, `p`, `server`).
 - Optional: `enabled` (default `true`), `price`, `deviation`, `comment`, `dryRun`.
-- Effective value resolution order for mergeable fields: **account → strategy → app** (`dryRun` only at app); then env `DRY_RUN` overrides all if set (preserve current behavior).
+- Effective value resolution for mergeable trading fields (`price`, `deviation`, `comment`, `dryRun`): **account → strategy → app** (app only contributes top-level `dryRun`). Env `DRY_RUN`, if set, overrides all of the above (preserve current behavior).
 
 **`mt5`**
 
@@ -243,10 +243,11 @@ Config/validation errors before execution keep **4xx** as listed above. Unexpect
 ## Migration notes
 
 1. Move each strategy’s password from `.env` `MT5_PASSWORD_*` into `config.json` `accounts.*.mt5.p`.
-2. Nest former single-account strategy fields under `accounts.<key>`; choose a stable key name.
-3. Move Telegram token/chat to `.env`; delete per-strategy telegram JSON.
-4. Update local `config.json` / `.env` (gitignored); ship updated `*.example` files.
-5. Restart bot / container after config change.
+2. Rename `mt5.login` → `mt5.l`; add `mt5.p` (password no longer from env).
+3. Nest former single-account strategy fields under `accounts.<key>`; choose a stable key name.
+4. Move Telegram token/chat to `.env`; delete per-strategy telegram JSON.
+5. Update local `config.json` / `.env` (gitignored); ship updated `*.example` files.
+6. Restart bot / container after config change.
 
 ## Open points deferred
 
