@@ -11,15 +11,21 @@ from decimal import ROUND_HALF_UP, Decimal
 from typing import List, Optional
 
 import platform as _platform
+import sys as _sys
 
 if _platform.system() == "Windows":
     import MetaTrader5 as mt5
 else:
-    # Linux/Docker: MetaTrader5 là Windows-only DLL, không thể import trực tiếp.
-    # mt5_linux_client forward tất cả calls qua HTTP đến Wine Python proxy (port 8765).
-    from app import mt5_linux_client as mt5  # type: ignore[assignment]
+    # Linux/Docker: MetaTrader5 is a Windows-only DLL. Prefer an injected
+    # fake (tests install one into sys.modules) so the suite can run
+    # without the Wine HTTP proxy; otherwise forward via mt5_linux_client.
+    _injected = _sys.modules.get("MetaTrader5")
+    if _injected is not None and getattr(_injected, "_is_fake", False):
+        mt5 = _injected  # type: ignore[assignment]
+    else:
+        from app import mt5_linux_client as mt5  # type: ignore[assignment]
 
-from app.config import StrategyConfig, get_mt5_terminal_path
+from app.config import ResolvedAccountConfig, get_mt5_terminal_path
 from app.logging_config import logger
 
 # The MetaTrader5 Python API maintains a single connection per process and
@@ -59,8 +65,8 @@ def _last_error_str() -> str:
     return f"({code}) {description}"
 
 
-def ensure_connection(strategy: StrategyConfig, password: str) -> None:
-    """(Re)connects to the MT5 terminal required by this strategy.
+def ensure_connection(resolved: ResolvedAccountConfig) -> None:
+    """(Re)connects to the MT5 terminal required by this resolved account.
 
     MetaTrader5's Python API talks to a single terminal instance per
     process, so we only re-initialize when the target account/terminal
@@ -68,16 +74,17 @@ def ensure_connection(strategy: StrategyConfig, password: str) -> None:
 
     Each broker (Exness, FTMO, etc.) has its own MT5 terminal installation
     with its own server list. The terminal path is resolved from:
-    1. strategy.mt5.terminal_path (per-strategy config)
+    1. resolved.mt5.terminal_path (per-account config)
     2. MT5_TERMINAL_PATH env var
     3. Default installation path
     """
     global _current_terminal
 
-    terminal_path = get_mt5_terminal_path(strategy.mt5)
-    identity = TerminalIdentity(
-        login=strategy.mt5.login, server=strategy.mt5.server, path=terminal_path
-    )
+    terminal_path = get_mt5_terminal_path(resolved.mt5)
+    login = resolved.mt5.l
+    password = resolved.mt5.p
+    server = resolved.mt5.server
+    identity = TerminalIdentity(login=login, server=server, path=terminal_path)
 
     if _current_terminal == identity:
         # Already connected to the right account; verify the terminal is alive.
@@ -86,9 +93,9 @@ def ensure_connection(strategy: StrategyConfig, password: str) -> None:
 
     ok = mt5.initialize(
         path=terminal_path,
-        login=strategy.mt5.login,
+        login=login,
         password=password,
-        server=strategy.mt5.server,
+        server=server,
     )
     if not ok:
         error = _last_error_str()
@@ -98,8 +105,8 @@ def ensure_connection(strategy: StrategyConfig, password: str) -> None:
     _current_terminal = identity
     logger.info(
         "Connected to MT5 terminal login=%s server=%s path=%s",
-        strategy.mt5.login,
-        strategy.mt5.server,
+        login,
+        server,
         terminal_path,
     )
 
