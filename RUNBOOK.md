@@ -15,14 +15,15 @@ Yêu cầu hệ thống:
 
 ## Bước 2: Chuẩn bị mã nguồn và Cấu hình
 1. Clone mã nguồn bot về server.
-2. Copy file `.env.example` thành `.env` và điền các thông tin bảo mật:
+2. Copy file `.env.example` thành `.env` và điền Telegram (không còn `MT5_PASSWORD_*`):
    ```env
    # Ví dụ:
    TELEGRAM_BOT_TOKEN=123456789:AA...
-   MT5_PASSWORD_ETH_STRATEGY_EXNESS=PasswordCuaBan
-   MT5_PASSWORD_ETH_STRATEGY_XM=PasswordCuaBan
+   TELEGRAM_CHAT_ID=-1001234567890
    ```
-3. Cấu hình file `config.json`:
+3. Cấu hình file `config.json` (xem `config.example.json`):
+   - Mỗi strategy có `accounts.<key>` với `magic` và `mt5` (`l` = login, `p` = password, `server`).
+   - Mật khẩu MT5 nằm trong `mt5.p` của từng account — **không** đặt trong `.env`.
    - Thiết lập `dryRun`: `true` (nếu chỉ muốn test) hoặc `false` (nếu muốn trade thật).
    - Đảm bảo **KHÔNG** set hardcode `terminal_path` trong config.json (để bot tự động tìm đường dẫn MT5 trong volume).
 
@@ -80,7 +81,7 @@ Sau khi nút Algo Trading đã xanh lá, hãy đứng ở màn hình terminal c�
 curl -X POST http://localhost:8000/api/order \
   -H "Content-Type: application/json" \
   -d '{
-    "strategy": "eth_strategy_exness",
+    "strategy": "eth_strategy",
     "symbol": "ETHUSDm",
     "order_id": "openLong",
     "price": 2500.0,
@@ -89,6 +90,9 @@ curl -X POST http://localhost:8000/api/order \
   }'
 ```
 
+- Response thành công luôn **HTTP 200** với body dạng `{ "strategy": "...", "results": [ { "account": "...", ... } ] }`.
+  Thêm `"account": "exness_main"` để chỉ chạy một account; bỏ field đó = fan-out mọi account `enabled`.
+- Lỗi MT5 trên một/nhiều account vẫn trả **200** (`results[].success=false`) — theo dõi qua Telegram/logs, không qua HTTP status.
 - Nếu `dryRun=false` trong `config.json`, hệ thống sẽ lập tức bắn lệnh thật lên MT5.
 - Bạn có thể mở VNC để xem lệnh hiển thị trong tab **Trade** ở dưới cùng.
 

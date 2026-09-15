@@ -68,11 +68,11 @@ cd mt5_bot
 ```bash
 # Copy và điền thông tin config
 cp config.example.json config.json
-nano config.json   # Điền login, server, magic, v.v.
+nano config.json   # strategies.*.accounts: magic + mt5.l / mt5.p / server
 
-# Copy và điền .env
+# Copy và điền .env (Telegram only — không còn MT5_PASSWORD_*)
 cp .env.example .env
-nano .env          # Điền MT5_PASSWORD_<STRATEGY>, TELEGRAM_BOT_TOKEN
+nano .env          # TELEGRAM_BOT_TOKEN, TELEGRAM_CHAT_ID
 ```
 
 ### Bước 3: Lấy MT5 installer từ broker
@@ -112,13 +112,15 @@ docker compose logs -f      # Xem logs
 curl http://localhost:8000/health
 # → {"status": "ok"}
 
-# Test webhook (dry_run)
+# Test webhook (dry_run) — HTTP 200 + {strategy, results:[{account,...}]}
+# Optional: "account": "exness_main" để chỉ một account; omit = fan-out enabled
 curl -X POST http://localhost:8000/api/order \
   -H "Content-Type: application/json" \
   -d '{
-    "strategy": "eth_strategy_exness",
+    "strategy": "eth_strategy",
     "symbol": "ETHUSD",
-    "order_id": "buy",
+    "order_id": "openLong",
+    "order_ratio": 1,
     "timenow": "2024-01-01T00:00:00Z"
   }'
 ```
