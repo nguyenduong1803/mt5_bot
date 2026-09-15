@@ -1,7 +1,13 @@
 import pytest
 from pydantic import ValidationError
 
-from app.schemas import OrderId, TradingViewAlert
+from app.schemas import (
+    AccountOrderResult,
+    OrderBatchResponse,
+    OrderId,
+    OrderResult,
+    TradingViewAlert,
+)
 
 
 def _base_payload(**overrides):
@@ -82,3 +88,41 @@ def test_rejects_missing_required_field():
     del payload["strategy"]
     with pytest.raises(ValidationError):
         TradingViewAlert.model_validate(payload)
+
+
+def test_optional_account_field():
+    alert = TradingViewAlert.model_validate(_base_payload(account="acc1"))
+    assert alert.account == "acc1"
+
+
+def test_account_defaults_to_none():
+    alert = TradingViewAlert.model_validate(_base_payload())
+    assert alert.account is None
+
+
+def test_rejects_blank_account():
+    with pytest.raises(ValidationError):
+        TradingViewAlert.model_validate(_base_payload(account="  "))
+    with pytest.raises(ValidationError):
+        TradingViewAlert.model_validate(_base_payload(account=""))
+
+
+def test_batch_response_shape():
+    result = AccountOrderResult(
+        account="acc1",
+        success=True,
+        dry_run=False,
+        strategy="eth_strategy_01",
+        symbol="ETHUSDT.P",
+        action="openLong",
+        volume=0.1,
+        price=4123.45,
+        order_ticket=12345,
+        message="ok",
+    )
+    assert isinstance(result, OrderResult)
+    batch = OrderBatchResponse(strategy="eth_strategy_01", results=[result])
+    assert batch.strategy == "eth_strategy_01"
+    assert len(batch.results) == 1
+    assert batch.results[0].account == "acc1"
+    assert batch.results[0].success is True

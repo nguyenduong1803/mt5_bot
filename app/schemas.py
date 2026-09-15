@@ -1,5 +1,5 @@
 from enum import Enum
-from typing import Optional, Union
+from typing import List, Optional, Union
 
 from pydantic import BaseModel, field_validator
 
@@ -23,6 +23,7 @@ class TradingViewAlert(BaseModel):
     alert_message: Optional[str] = None
     order_ratio: float
     strategy: str
+    account: Optional[str] = None
 
     @field_validator("price", "order_ratio", mode="before")
     @classmethod
@@ -58,8 +59,21 @@ class TradingViewAlert(BaseModel):
             raise ValueError("must not be blank")
         return v.strip()
 
+    @field_validator("account", mode="before")
+    @classmethod
+    def account_optional_not_blank(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        if not isinstance(v, str):
+            raise ValueError("account must be a string")
+        stripped = v.strip()
+        if not stripped:
+            raise ValueError("must not be blank")
+        return stripped
 
-class OrderResult(BaseModel):
+
+class AccountOrderResult(BaseModel):
+    account: Optional[str] = None
     success: bool
     dry_run: bool
     strategy: str
@@ -69,3 +83,11 @@ class OrderResult(BaseModel):
     price: Optional[float] = None
     order_ticket: Optional[int] = None
     message: str
+
+
+class OrderBatchResponse(BaseModel):
+    strategy: str
+    results: List[AccountOrderResult]
+
+
+OrderResult = AccountOrderResult
