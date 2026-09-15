@@ -96,11 +96,16 @@ def tmp_config(tmp_path, monkeypatch):
             "eth_strategy_01": {
                 "price": 1000,
                 "deviation": 20,
-                "magic": 100001,
                 "comment": "ETH Strategy 01",
-                "mt5": {
-                    "login": 12345678,
-                    "server": "TestServer",
+                "accounts": {
+                    "default": {
+                        "magic": 100001,
+                        "mt5": {
+                            "l": 12345678,
+                            "p": "test-password",
+                            "server": "TestServer",
+                        },
+                    }
                 },
             }
         },
@@ -109,7 +114,6 @@ def tmp_config(tmp_path, monkeypatch):
     config_path.write_text(json.dumps(config), encoding="utf-8")
 
     monkeypatch.setenv("CONFIG_PATH", str(config_path))
-    monkeypatch.setenv("MT5_PASSWORD_ETH_STRATEGY_01", "test-password")
     monkeypatch.delenv("DRY_RUN", raising=False)
 
     from app import config as config_module

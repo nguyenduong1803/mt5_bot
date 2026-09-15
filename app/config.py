@@ -2,7 +2,7 @@ import json
 import os
 from functools import lru_cache
 from pathlib import Path
-from typing import Dict, Optional
+from typing import Dict, List, Optional
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, Field, field_validator
@@ -18,21 +18,22 @@ def _config_path() -> Path:
     return Path(os.getenv("CONFIG_PATH", "config.json"))
 
 
-def get_mt5_terminal_path(strategy: Optional["MT5Config"] = None) -> str:
-    """Returns the MT5 terminal path for a strategy.
+def get_mt5_terminal_path(mt5: Optional["MT5Config"] = None) -> str:
+    """Returns the MT5 terminal path for an account.
 
     Priority:
-    1. Per-strategy terminal_path in config
+    1. Per-account terminal_path in config
     2. MT5_TERMINAL_PATH env var
     3. Default installation path
     """
-    if strategy is not None and strategy.terminal_path:
-        return strategy.terminal_path
+    if mt5 is not None and mt5.terminal_path:
+        return mt5.terminal_path
     return os.getenv("MT5_TERMINAL_PATH", DEFAULT_MT5_TERMINAL_PATH)
 
 
 class MT5Config(BaseModel):
-    login: int
+    l: int
+    p: str
     server: str
     # Path to terminal64.exe for this broker. Each broker (Exness, FTMO, etc.)
     # has its own MT5 installation with its own server list. If not set,
@@ -40,13 +41,15 @@ class MT5Config(BaseModel):
     terminal_path: Optional[str] = None
 
 
-class TelegramConfig(BaseModel):
+class AccountConfig(BaseModel):
     enabled: bool = True
-    # Chat/group/channel id to notify for this strategy.
-    chatId: str
-    # Bot token for this strategy. Optional here — if omitted, falls back
-    # to TELEGRAM_BOT_TOKEN_<STRATEGY> or TELEGRAM_BOT_TOKEN in .env.
-    botToken: Optional[str] = None
+    magic: int
+    price: Optional[float] = None
+    deviation: Optional[int] = None
+    comment: Optional[str] = None
+    dryRun: Optional[bool] = None
+    mt5: MT5Config
+
 
 class StrategyConfig(BaseModel):
     # Base capital allocated per full-size (order_ratio=1) trade, in USD.
@@ -58,11 +61,9 @@ class StrategyConfig(BaseModel):
     # rejects the fill for being too far from this, so a real price spike
     # still gets filled without accepting unlimited slippage up front.
     deviation: int = 200
-    magic: int
     comment: str = ""
-    mt5: MT5Config
-    telegram: Optional[TelegramConfig] = None
     dryRun: Optional[bool] = None
+    accounts: Dict[str, AccountConfig]
 
     @field_validator("price")
     @classmethod
@@ -70,6 +71,17 @@ class StrategyConfig(BaseModel):
         if v <= 0:
             raise ValueError("price must be greater than 0")
         return v
+
+
+class ResolvedAccountConfig(BaseModel):
+    account_key: str
+    strategy_name: str
+    price: float
+    deviation: int
+    magic: int
+    comment: str
+    dryRun: Optional[bool]
+    mt5: MT5Config
 
 
 class AppConfig(BaseModel):
@@ -114,29 +126,55 @@ def get_strategy_config(strategy_name: str) -> StrategyConfig:
     return strategy
 
 
-def is_dry_run(strategy: StrategyConfig) -> bool:
+def resolve_account_config(strategy_name: str, account_key: str) -> ResolvedAccountConfig:
+    strategy = get_strategy_config(strategy_name)
+    account = strategy.accounts.get(account_key)
+    if account is None:
+        raise ConfigError(
+            f"unknown_account: Unknown account '{account_key}' for strategy '{strategy_name}'"
+        )
+    if not account.enabled:
+        raise ConfigError(
+            f"account_disabled: Account '{account_key}' is disabled for strategy '{strategy_name}'"
+        )
+    return ResolvedAccountConfig(
+        account_key=account_key,
+        strategy_name=strategy_name,
+        price=account.price if account.price is not None else strategy.price,
+        deviation=account.deviation if account.deviation is not None else strategy.deviation,
+        magic=account.magic,
+        comment=account.comment if account.comment is not None else strategy.comment,
+        dryRun=account.dryRun if account.dryRun is not None else strategy.dryRun,
+        mt5=account.mt5,
+    )
+
+
+def resolve_execution_targets(
+    strategy_name: str, account: Optional[str]
+) -> List[ResolvedAccountConfig]:
+    strategy = get_strategy_config(strategy_name)
+    if account is not None:
+        return [resolve_account_config(strategy_name, account)]
+    enabled = [k for k, a in strategy.accounts.items() if a.enabled]
+    if not enabled:
+        raise ConfigError(
+            f"no_enabled_accounts: No enabled accounts for strategy '{strategy_name}'"
+        )
+    return [resolve_account_config(strategy_name, k) for k in enabled]
+
+
+def is_dry_run(resolved: ResolvedAccountConfig) -> bool:
     env_override = os.getenv("DRY_RUN")
     if env_override is not None:
         return env_override.strip().lower() in ("1", "true", "yes", "on")
-    if strategy.dryRun is not None:
-        return strategy.dryRun
+    if resolved.dryRun is not None:
+        return resolved.dryRun
     return get_config().dryRun
 
 
-def get_mt5_password(strategy_name: str) -> str:
-    env_key = f"MT5_PASSWORD_{strategy_name.upper()}"
-    password = os.getenv(env_key)
-    if not password:
-        raise ConfigError(
-            f"Missing MT5 password for strategy '{strategy_name}'. "
-            f"Set {env_key} in .env"
-        )
-    return password
+def get_telegram_bot_token() -> Optional[str]:
+    return os.getenv("TELEGRAM_BOT_TOKEN")
 
 
-def get_telegram_bot_token(strategy_name: str) -> Optional[str]:
-    """Per-strategy bot token (TELEGRAM_BOT_TOKEN_<STRATEGY>) takes
-    precedence over the global TELEGRAM_BOT_TOKEN, so different strategies
-    can notify via different bots if needed."""
-    per_strategy_key = f"TELEGRAM_BOT_TOKEN_{strategy_name.upper()}"
-    return os.getenv(per_strategy_key) or os.getenv("TELEGRAM_BOT_TOKEN")
+def get_telegram_chat_id() -> Optional[str]:
+    return os.getenv("TELEGRAM_CHAT_ID")
