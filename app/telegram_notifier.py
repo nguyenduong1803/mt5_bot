@@ -6,9 +6,9 @@ TradingView.
 """
 import httpx
 
-from app.config import StrategyConfig, get_telegram_bot_token
+from app.config import get_telegram_bot_token, get_telegram_chat_id
 from app.logging_config import logger
-from app.schemas import OrderResult
+from app.schemas import AccountOrderResult
 from app.symbols import strip_perpetual_suffix
 
 TELEGRAM_API_URL = "https://api.telegram.org/bot{token}/sendMessage"
@@ -25,7 +25,7 @@ def _format_number(value: float) -> str:
     return f"{integer_part},{decimal_part}"
 
 
-def _format_message(result: OrderResult) -> str:
+def _format_message(result: AccountOrderResult) -> str:
     if result.dry_run:
         status_emoji = "🧪"
     elif result.success:
@@ -36,27 +36,21 @@ def _format_message(result: OrderResult) -> str:
     price_str = _format_number(result.price) if result.price is not None else "—"
     header = f"{status_emoji} {strip_perpetual_suffix(result.symbol)}-{result.action}: {price_str}"
 
-    lines = [header, f"Strategy: {result.strategy}"]
+    lines = [
+        header,
+        f"Strategy: {result.strategy}",
+        f"Account: {result.account or '—'}",
+    ]
     if not result.success:
         lines.append(f"Message: {result.message}")
 
     return "\n".join(lines)
 
 
-def notify_order_result(strategy: StrategyConfig, result: OrderResult) -> None:
-    telegram = strategy.telegram
-    if telegram is None or not telegram.enabled:
-        return
-
-    token = telegram.botToken or get_telegram_bot_token(result.strategy)
-    if not token:
-        logger.warning(
-            "Telegram enabled for strategy=%s but no bot token configured "
-            "(set 'telegram.botToken' in config.json, or TELEGRAM_BOT_TOKEN"
-            " / TELEGRAM_BOT_TOKEN_%s in .env)",
-            result.strategy,
-            result.strategy.upper(),
-        )
+def notify_order_result(result: AccountOrderResult) -> None:
+    token = get_telegram_bot_token()
+    chat_id = get_telegram_chat_id()
+    if not token or not chat_id:
         return
 
     message = _format_message(result)
@@ -65,8 +59,8 @@ def notify_order_result(strategy: StrategyConfig, result: OrderResult) -> None:
     try:
         response = httpx.post(
             url,
-            json={"chat_id": telegram.chatId, "text": message},
-            timeout=10,
+            json={"chat_id": chat_id, "text": message},
+            timeout=3.0,
         )
         response.raise_for_status()
     except httpx.HTTPError as e:
