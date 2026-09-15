@@ -16,3 +16,5 @@ docker/mt5-installer/*.msi
 *.zip
 *.exe
 *.log
+
+note.txt
