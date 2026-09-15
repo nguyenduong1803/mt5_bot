@@ -5,6 +5,7 @@ import pytest
 from app.config import (
     ConfigError,
     get_config,
+    is_dry_run,
     resolve_account_config,
     resolve_execution_targets,
 )
@@ -124,3 +125,62 @@ def test_nested_config_loads(nested_config):
     strategy = config.strategies["eth_strategy_01"]
     assert "acc_a" in strategy.accounts
     assert strategy.accounts["acc_a"].mt5.l == 111
+
+
+def _write_dry_run_config(tmp_path, monkeypatch, *, app_dry=True, strategy_dry=None, account_dry=None):
+    strategy = {
+        "price": 1000,
+        "deviation": 20,
+        "comment": "default",
+        "accounts": {
+            "acc_a": {
+                "magic": 100001,
+                "mt5": {"l": 111, "p": "pass-a", "server": "S1"},
+            },
+        },
+    }
+    if strategy_dry is not None:
+        strategy["dryRun"] = strategy_dry
+    if account_dry is not None:
+        strategy["accounts"]["acc_a"]["dryRun"] = account_dry
+
+    config = {"dryRun": app_dry, "strategies": {"eth_strategy_01": strategy}}
+    path = tmp_path / "config.json"
+    path.write_text(json.dumps(config), encoding="utf-8")
+    monkeypatch.setenv("CONFIG_PATH", str(path))
+    monkeypatch.delenv("DRY_RUN", raising=False)
+    from app import config as config_module
+
+    config_module.get_config.cache_clear()
+
+
+def test_account_dry_run_overrides_strategy(tmp_path, monkeypatch):
+    _write_dry_run_config(tmp_path, monkeypatch, app_dry=True, strategy_dry=True, account_dry=False)
+    resolved = resolve_account_config("eth_strategy_01", "acc_a")
+    assert resolved.dryRun is False
+    assert is_dry_run(resolved) is False
+
+
+def test_strategy_dry_run_when_account_omits(tmp_path, monkeypatch):
+    _write_dry_run_config(tmp_path, monkeypatch, app_dry=False, strategy_dry=True, account_dry=None)
+    resolved = resolve_account_config("eth_strategy_01", "acc_a")
+    assert resolved.dryRun is True
+    assert is_dry_run(resolved) is True
+
+
+def test_app_dry_run_when_both_omit(tmp_path, monkeypatch):
+    _write_dry_run_config(tmp_path, monkeypatch, app_dry=True, strategy_dry=None, account_dry=None)
+    resolved = resolve_account_config("eth_strategy_01", "acc_a")
+    assert resolved.dryRun is None
+    assert is_dry_run(resolved) is True
+
+
+def test_dry_run_env_overrides_all(tmp_path, monkeypatch):
+    _write_dry_run_config(tmp_path, monkeypatch, app_dry=False, strategy_dry=False, account_dry=False)
+    monkeypatch.setenv("DRY_RUN", "true")
+    from app import config as config_module
+
+    config_module.get_config.cache_clear()
+    resolved = resolve_account_config("eth_strategy_01", "acc_a")
+    assert resolved.dryRun is False
+    assert is_dry_run(resolved) is True

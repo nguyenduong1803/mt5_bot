@@ -50,6 +50,13 @@ class AccountConfig(BaseModel):
     dryRun: Optional[bool] = None
     mt5: MT5Config
 
+    @field_validator("price")
+    @classmethod
+    def price_must_be_positive(cls, v: Optional[float]) -> Optional[float]:
+        if v is not None and v <= 0:
+            raise ValueError("price must be greater than 0")
+        return v
+
 
 class StrategyConfig(BaseModel):
     # Base capital allocated per full-size (order_ratio=1) trade, in USD.
