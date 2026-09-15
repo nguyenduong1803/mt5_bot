@@ -179,6 +179,14 @@ def is_dry_run(resolved: ResolvedAccountConfig) -> bool:
     return get_config().dryRun
 
 
+def is_app_dry_run() -> bool:
+    """App-level dry run when no resolved account is available (e.g. broadcast duplicate)."""
+    env_override = os.getenv("DRY_RUN")
+    if env_override is not None:
+        return env_override.strip().lower() in ("1", "true", "yes", "on")
+    return get_config().dryRun
+
+
 def get_telegram_bot_token() -> Optional[str]:
     return os.getenv("TELEGRAM_BOT_TOKEN")
 

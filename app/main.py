@@ -1,15 +1,22 @@
 import asyncio
 import json
+from typing import List
 
 from fastapi import FastAPI, Request, status
 from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
-from app.config import ConfigError, get_strategy_config, is_dry_run
+from app.config import (
+    ConfigError,
+    is_app_dry_run,
+    is_dry_run,
+    resolve_account_config,
+    resolve_execution_targets,
+)
 from app.dedupe import is_duplicate
 from app.logging_config import logger
-from app.order_service import OrderExecutionError, execute_order
-from app.schemas import OrderResult, TradingViewAlert
+from app.order_service import OrderExecutionError, execute_order_batch
+from app.schemas import AccountOrderResult, OrderBatchResponse, TradingViewAlert
 from app.telegram_notifier import notify_order_result
 
 app = FastAPI(
@@ -19,12 +26,30 @@ app = FastAPI(
 )
 
 
+def _config_error_code(message: str) -> str:
+    if "unknown_account" in message:
+        return "unknown_account"
+    if "account_disabled" in message:
+        return "account_disabled"
+    if "no_enabled_accounts" in message:
+        return "no_enabled_accounts"
+    if "Unknown strategy" in message or "unknown_strategy" in message:
+        return "unknown_strategy"
+    return "config_error"
+
+
+async def _notify_batch_async(results: List[AccountOrderResult]) -> None:
+    loop = asyncio.get_running_loop()
+    for r in results:
+        await loop.run_in_executor(None, notify_order_result, r)
+
+
 @app.get("/health")
 async def health():
     return {"status": "ok"}
 
 
-@app.post("/api/order", response_model=OrderResult)
+@app.post("/api/order", response_model=OrderBatchResponse)
 async def receive_order(request: Request):
     raw_body = await request.body()
     raw_text = raw_body.decode("utf-8", errors="replace")
@@ -55,20 +80,28 @@ async def receive_order(request: Request):
         )
 
     try:
-        strategy = get_strategy_config(alert.strategy)
+        targets = resolve_execution_targets(alert.strategy, alert.account)
     except ConfigError as e:
-        logger.error("Unknown strategy '%s': %s", alert.strategy, e)
+        error_code = _config_error_code(str(e))
+        logger.error("Config error resolving targets for strategy=%s: %s", alert.strategy, e)
         return JSONResponse(
             status_code=status.HTTP_400_BAD_REQUEST,
-            content={"error": "unknown_strategy", "detail": str(e)},
+            content={"error": error_code, "detail": str(e)},
         )
 
+    if alert.account is not None:
+        dry_run = is_dry_run(resolve_account_config(alert.strategy, alert.account))
+    else:
+        dry_run = is_app_dry_run()
+
     logger.info(
-        "Processing order: strategy=%s symbol=%s order_id=%s dry_run=%s",
+        "Processing order: strategy=%s account=%s symbol=%s order_id=%s dry_run=%s targets=%s",
         alert.strategy,
+        alert.account,
         alert.symbol,
         alert.order_id.value,
-        is_dry_run(strategy),
+        dry_run,
+        [t.account_key for t in targets],
     )
 
     if is_duplicate(alert):
@@ -78,47 +111,43 @@ async def receive_order(request: Request):
             alert.strategy,
             alert.order_id.value,
         )
-        return JSONResponse(
-            status_code=status.HTTP_200_OK,
-            content=OrderResult(
-                success=True,
-                dry_run=is_dry_run(strategy),
-                strategy=alert.strategy,
-                symbol=alert.symbol,
-                action=alert.order_id.value,
-                message="Duplicate alert ignored (already processed this signal recently)",
-            ).model_dump(),
+        batch = OrderBatchResponse(
+            strategy=alert.strategy,
+            results=[
+                AccountOrderResult(
+                    account=alert.account,
+                    success=True,
+                    dry_run=dry_run,
+                    strategy=alert.strategy,
+                    symbol=alert.symbol,
+                    action=alert.order_id.value,
+                    message="Duplicate alert ignored (already processed this signal recently)",
+                )
+            ],
         )
+        return JSONResponse(status_code=status.HTTP_200_OK, content=batch.model_dump())
 
     try:
         # MetaTrader5 calls are blocking; run them off the event loop so a
         # slow MT5/broker round-trip doesn't stall other requests (e.g.
         # /health, or a webhook for a different strategy).
-        result = await asyncio.to_thread(execute_order, alert, strategy)
+        loop = asyncio.get_running_loop()
+        results = await loop.run_in_executor(None, execute_order_batch, alert, targets)
     except OrderExecutionError as e:
-        logger.error("Order execution failed: %s", e)
-        await asyncio.to_thread(
-            notify_order_result,
-            strategy,
-            OrderResult(
+        # Lock timeout (or similar) before any account ran — still honor
+        # the 200 batch envelope with a synthetic failure result.
+        logger.error("Order batch failed before results: %s", e)
+        results = [
+            AccountOrderResult(
+                account=None,
                 success=False,
-                dry_run=is_dry_run(strategy),
+                dry_run=dry_run,
                 strategy=alert.strategy,
                 symbol=alert.symbol,
                 action=alert.order_id.value,
                 message=str(e),
-            ),
-        )
-        return JSONResponse(
-            status_code=status.HTTP_502_BAD_GATEWAY,
-            content={"error": "order_execution_failed", "detail": str(e)},
-        )
-    except ConfigError as e:
-        logger.error("Config error during order execution: %s", e)
-        return JSONResponse(
-            status_code=status.HTTP_400_BAD_REQUEST,
-            content={"error": "config_error", "detail": str(e)},
-        )
+            )
+        ]
     except Exception as e:
         logger.exception("Unexpected error during order execution")
         return JSONResponse(
@@ -126,7 +155,6 @@ async def receive_order(request: Request):
             content={"error": "internal_error", "detail": str(e)},
         )
 
-    await asyncio.to_thread(notify_order_result, strategy, result)
-
-    status_code = status.HTTP_200_OK if result.success else status.HTTP_502_BAD_GATEWAY
-    return JSONResponse(status_code=status_code, content=result.model_dump())
+    batch = OrderBatchResponse(strategy=alert.strategy, results=results)
+    asyncio.create_task(_notify_batch_async(results))
+    return JSONResponse(status_code=status.HTTP_200_OK, content=batch.model_dump())
