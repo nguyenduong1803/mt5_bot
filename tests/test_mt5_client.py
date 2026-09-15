@@ -4,10 +4,26 @@ from unittest.mock import MagicMock
 import pytest
 
 from app import mt5_client
+from app.config import get_mt5_terminal_path, resolve_account_config
 
 
 def _tick(bid, ask):
     return SimpleNamespace(bid=bid, ask=ask)
+
+
+def test_ensure_connection_passes_login_password_server_to_initialize(tmp_config, fake_mt5):
+    resolved = resolve_account_config("eth_strategy_01", "default")
+    fake_mt5.initialize.reset_mock()
+    mt5_client._current_terminal = None
+
+    mt5_client.ensure_connection(resolved)
+
+    fake_mt5.initialize.assert_called_once_with(
+        path=get_mt5_terminal_path(resolved.mt5),
+        login=resolved.mt5.l,
+        password=resolved.mt5.p,
+        server=resolved.mt5.server,
+    )
 
 
 def test_get_tick_returns_immediately_when_price_is_valid(monkeypatch, fake_mt5):
