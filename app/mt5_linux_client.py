@@ -126,6 +126,11 @@ def terminal_info():
     return _make_namespace(result)
 
 
+def account_info():
+    result = _call("account_info")
+    return _make_namespace(result)
+
+
 def last_error():
     result = _call("last_error")
     return tuple(result) if result else (0, "")

@@ -15,6 +15,7 @@ def test_ensure_connection_passes_login_password_server_to_initialize(tmp_config
     resolved = resolve_account_config("eth_strategy_01", "default")
     fake_mt5.initialize.reset_mock()
     mt5_client._current_terminal = None
+    fake_mt5.account_info.return_value.login = resolved.mt5.l
 
     mt5_client.ensure_connection(resolved)
 
@@ -24,6 +25,40 @@ def test_ensure_connection_passes_login_password_server_to_initialize(tmp_config
         password=resolved.mt5.p,
         server=resolved.mt5.server,
     )
+
+
+def test_ensure_connection_raises_if_account_info_login_mismatches(tmp_config, fake_mt5):
+    """initialize may return True while the terminal stays on another account.
+
+    Without this check the bot would size/label orders for account B but
+    send them on whatever account is actually logged in (A).
+    """
+    resolved = resolve_account_config("eth_strategy_01", "default")
+    fake_mt5.initialize.reset_mock()
+    mt5_client._current_terminal = None
+    fake_mt5.account_info.return_value.login = 99999999  # not resolved.mt5.l
+
+    with pytest.raises(mt5_client.MT5Error, match="Account mismatch"):
+        mt5_client.ensure_connection(resolved)
+
+    assert mt5_client._current_terminal is None
+
+
+def test_ensure_connection_cached_path_still_verifies_login(tmp_config, fake_mt5):
+    resolved = resolve_account_config("eth_strategy_01", "default")
+    mt5_client._current_terminal = mt5_client.TerminalIdentity(
+        login=resolved.mt5.l,
+        server=resolved.mt5.server,
+        path=get_mt5_terminal_path(resolved.mt5),
+    )
+    fake_mt5.initialize.reset_mock()
+    fake_mt5.account_info.return_value.login = 99999999
+
+    with pytest.raises(mt5_client.MT5Error, match="Account mismatch"):
+        mt5_client.ensure_connection(resolved)
+
+    fake_mt5.initialize.assert_not_called()
+    assert mt5_client._current_terminal is None
 
 
 def test_get_tick_returns_immediately_when_price_is_valid(monkeypatch, fake_mt5):

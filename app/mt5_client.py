@@ -65,6 +65,28 @@ def _last_error_str() -> str:
     return f"({code}) {description}"
 
 
+def _verify_active_login(expected_login: int) -> None:
+    """Fail closed if the terminal session is not the requested account.
+
+    MetaTrader5.initialize(login=...) can return True while the GUI/session
+    remains on a different account. Without this check, order_send would
+    trade the wrong account using the *requested* account's price/magic.
+    """
+    info = mt5.account_info()
+    if info is None:
+        raise MT5Error(
+            f"Connected but account_info() is None after initialize "
+            f"(expected login={expected_login}). {_last_error_str()}"
+        )
+    actual_login = int(info.login)
+    if actual_login != int(expected_login):
+        raise MT5Error(
+            f"Account mismatch: requested login={expected_login} but "
+            f"terminal session is login={actual_login}. Refusing to trade "
+            f"to avoid placing orders on the wrong account."
+        )
+
+
 def ensure_connection(resolved: ResolvedAccountConfig) -> None:
     """(Re)connects to the MT5 terminal required by this resolved account.
 
@@ -77,6 +99,9 @@ def ensure_connection(resolved: ResolvedAccountConfig) -> None:
     1. resolved.mt5.terminal_path (per-account config)
     2. MT5_TERMINAL_PATH env var
     3. Default installation path
+
+    After connect (or on a cached identity), verifies account_info().login
+    matches the requested account before any trading call.
     """
     global _current_terminal
 
@@ -87,9 +112,16 @@ def ensure_connection(resolved: ResolvedAccountConfig) -> None:
     identity = TerminalIdentity(login=login, server=server, path=terminal_path)
 
     if _current_terminal == identity:
-        # Already connected to the right account; verify the terminal is alive.
+        # Already connected to the right account; verify the terminal is alive
+        # and the live session login still matches (account may have been
+        # switched in the GUI without our knowledge).
         if mt5.terminal_info() is not None:
-            return
+            try:
+                _verify_active_login(login)
+                return
+            except MT5Error:
+                _current_terminal = None
+                raise
 
     ok = mt5.initialize(
         path=terminal_path,
@@ -101,6 +133,12 @@ def ensure_connection(resolved: ResolvedAccountConfig) -> None:
         error = _last_error_str()
         _current_terminal = None
         raise MT5Error(f"Failed to initialize MT5 terminal: {error}")
+
+    try:
+        _verify_active_login(login)
+    except MT5Error:
+        _current_terminal = None
+        raise
 
     _current_terminal = identity
     logger.info(

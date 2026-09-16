@@ -50,6 +50,7 @@ def _install_fake_mt5():
 
     # Account info mock with all required attributes
     _account_info_mock = MagicMock()
+    _account_info_mock.login = 12345678
     _account_info_mock.balance = 100000.0
     _account_info_mock.equity = 100000.0
     _account_info_mock.margin = 0.0

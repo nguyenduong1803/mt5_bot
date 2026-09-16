@@ -81,6 +81,8 @@ class MT5Handler(BaseHTTPRequestHandler):
             return True
         elif fn == "terminal_info":
             return _serialize(mt5.terminal_info())
+        elif fn == "account_info":
+            return _serialize(mt5.account_info())
         elif fn == "last_error":
             code, msg = mt5.last_error()
             return [code, msg]
